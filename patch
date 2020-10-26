@@ -1,0 +1,70 @@
+diff --git a/client/dump/table.cc b/client/dump/table.cc
+index 4569bbf..e368fae 100644
+--- a/client/dump/table.cc
++++ b/client/dump/table.cc
+@@ -26,6 +26,9 @@
+ #include "pattern_matcher.h"
+ #include <boost/algorithm/string.hpp>
+
++#include <boost/regex.hpp>
++#include <iostream>
++
+ using namespace Mysql::Tools::Dump;
+
+ Table::Table(uint64 id, const std::string& name, const std::string& schema,
+@@ -43,6 +46,9 @@ Table::Table(uint64 id, const std::string& name, const std::string& schema,
+   std::vector<std::string> definition_lines;
+   boost::split(definition_lines, sql_formatted_definition,
+     boost::is_any_of("\n"), boost::token_compress_on);
++
++  std::string skip_list;
++  bool fix_flag = false;
+   for (std::vector<std::string>::iterator it= definition_lines.begin();
+     it != definition_lines.end(); ++it)
+   {
+@@ -54,7 +60,33 @@ Table::Table(uint64 id, const std::string& name, const std::string& schema,
+     boost::trim_left(*it);
+     if (!engine_line_read)
+       boost::trim_if(*it, boost::is_any_of(","));
+-    if (boost::starts_with(*it, "KEY ")
++
++    boost::regex key_name_regex ("`(.*)`(.*)AUTO_INCREMENT");
++    boost::smatch res;
++    if (boost::regex_search(*it, res, key_name_regex))
++    {
++      // debug
++      //std::cout << "phase 1 grp 1 : " << res[1].str() << std::endl;
++      skip_list = res[1].str();
++
++    }
++
++    boost::regex test_regex ("KEY `(.*)` (.*)");
++    boost::smatch test_res;
++
++    if (boost::regex_search(*it, test_res, test_regex))
++    {
++      // debug
++      //std::cout << "phase 2 grp 1 : " << test_res[1].str() << std::endl;
++      if (test_res[1] == skip_list){
++        // debug
++        //std::cout << "[debug] skip key " << *it << std::endl;
++        fix_flag = true;
++      }
++    }
++
++    if (
++      (boost::starts_with(*it, "KEY ") and fix_flag == false)
+       || boost::starts_with(*it, "INDEX ")
+       || boost::starts_with(*it, "UNIQUE KEY ")
+       || boost::starts_with(*it, "UNIQUE INDEX ")
+@@ -78,6 +110,10 @@ Table::Table(uint64 id, const std::string& name, const std::string& schema,
+         engine_line_read= true;
+         std::string &sql_def = m_sql_definition_without_indexes;
+         sql_def = boost::algorithm::replace_last_copy(sql_def, ",", "");
++
++        // debug
++        //printf(">>> clear string <<<\n");
++        skip_list.clear();
+       }
+       else if (it != definition_lines.begin() && !engine_line_read)
+         *it+= ",";
